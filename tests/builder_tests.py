@@ -4,7 +4,7 @@ from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.pool import NullPool
-from interrogate import Builder, exceptions
+from interrogate import Builder
 
 
 class InterrogateTestCase(unittest.TestCase):
@@ -68,7 +68,7 @@ class InterrogateTestCase(unittest.TestCase):
     def test_empty_model(self):
         args = self.valid_builder_args()
         args[0] = None
-        with self.assertRaises(exceptions.IllegalConstraintException):
+        with self.assertRaises(ValueError):
             return Builder(*args)
 
     def test_missing_operator(self):
@@ -79,7 +79,7 @@ class InterrogateTestCase(unittest.TestCase):
             # 'not': ['NOT']
         }
         args[1] = incomplete_operators
-        with self.assertRaises(exceptions.IllegalConstraintException):
+        with self.assertRaises(ValueError):
             return Builder(*args)
 
     def test_duplicate_type_constraint(self):
@@ -100,5 +100,5 @@ class InterrogateTestCase(unittest.TestCase):
             ]
         }
         args[2] = dup_type_constraints
-        with self.assertRaises(exceptions.IllegalConstraintException):
+        with self.assertRaises(ValueError):
             return Builder(*args)

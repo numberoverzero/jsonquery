@@ -1,7 +1,10 @@
 import operator
 import collections
 import sqlalchemy
-from interrogate import exceptions
+
+
+class InterrogateException(Exception):
+    pass
 
 
 DEFAULT_QUERY_CONSTRAINTS = {
@@ -114,13 +117,13 @@ class Builder(object):
         self.model = model
 
         if self.model is None:
-            raise exceptions.IllegalConstraintException(u"Must provide a valid model.")
+            raise ValueError(u"Must provide a valid model.")
 
         self.operators = dict(operators)
         operator_keys = set(self.operators.keys())
         if not operator_keys.issuperset(_operators):
             # Missing at least one operator
-            raise exceptions.IllegalConstraintException(u"Must specifiy aliases for all three logical operators.")
+            raise ValueError(u"Must specifiy aliases for all three logical operators.")
         for operator in _operators:
             operators = self.operators[operator]
             if _is_real_sequence(operators):
@@ -139,8 +142,7 @@ class Builder(object):
         duplicate_constraints = string_c.intersection(numeric_c)
         if duplicate_constraints:
             # Found an element in both sets
-            raise exceptions.IllegalConstraintException(
-                u"Specified two type constraints for the following: ".format(duplicate_constraints))
+            raise ValueError(u"Specified two type constraints for the following: ".format(duplicate_constraints))
 
         query_constraints = query_constraints or {}
         self.query_constraints = dict(DEFAULT_QUERY_CONSTRAINTS)
@@ -252,7 +254,7 @@ class Builder(object):
         value = node[u'value']
         self._validate_query_constraints(value, count, depth)
         if _is_real_sequence(value):
-            raise exceptions.InvalidQueryFormat(u"Expected single value for node {}, found {}".format(node, value))
+            raise TypeError(u"Cannot compare a column to a sequence".format(node, value))
 
         subquery, count = self._build(node, count, depth)
         return func(subquery), count
@@ -300,28 +302,26 @@ class Builder(object):
         self._validate_nullable(column, value)
 
         op = NUMERIC_OPERATORS[operator]
-        col = getattr(self.model, column, None)
-        if col is None:
-            raise exceptions.InvalidQueryFormat(u"Unknown model column '{}'".format(column))
+        col = getattr(self.model, column)
         return op(col, value), count
 
     def _validate_query_constraints(self, value, count, depth):
         '''Raises if any query constraints are violated'''
         depth += 1
         if self.max_depth and depth > self.max_depth:
-            raise exceptions.MaximumDepthException(u'Depth limit ({}) exceeded'.format(self.max_depth))
+            raise InterrogateException(u'Depth limit ({}) exceeded'.format(self.max_depth))
 
         if _is_real_sequence(value):
             element_breadth = len(value)
             if self.max_breadth and element_breadth > self.max_breadth:
-                raise exceptions.MaximumBreadthException(u'Breadth limit ({}) exceeded'.format(self.max_breadth))
+                raise InterrogateException(u'Breadth limit ({}) exceeded'.format(self.max_breadth))
             count += len(value)
 
         count += 1
         if self.max_elements and count > self.max_elements:
-            raise exceptions.MaximumElementsException(u'Filter elements limit ({}) exceeded'.format(self.max_elements))
+            raise InterrogateException(u'Filter elements limit ({}) exceeded'.format(self.max_elements))
 
     def _validate_nullable(self, column, value):
         nullable = column in self.type_constraints[u'nullable']
         if value is None and not nullable:
-            raise exceptions.InvalidQueryFormat(u'Column "{}" cannot be null.'.format(column))
+            raise ValueError(u'Column "{}" cannot be null.'.format(column))
