@@ -8,44 +8,37 @@ class InterrogateException(Exception):
 
 
 DEFAULT_QUERY_CONSTRAINTS = {
-    u'breadth': None,
-    u'depth': None,
-    u'elements': 64
+    'breadth': None,
+    'depth': None,
+    'elements': 64
 }
 
 NUMERIC_OPERATORS = {
-    u'<': operator.lt,
-    u'<=': operator.le,
-    u'!=': operator.ne,
-    u'==': operator.eq,
-    u'>=': operator.ge,
-    u'>': operator.gt,
+    '<': operator.lt,
+    '<=': operator.le,
+    '!=': operator.ne,
+    '==': operator.eq,
+    '>=': operator.ge,
+    '>': operator.gt,
 }
 
 CASE_OPERATORS = {
-    u'strict': 'like',
-    u'ignore': 'ilike',
+    'strict': 'like',
+    'ignore': 'ilike',
 }
 
 STRING_MATCH_FUNCS = {
-    u'match-prefix': lambda s: _unicodify(s + '%'),     #  "foo" matches "foobar"
-    u'match-suffix': lambda s: _unicodeify('%' + s),    #  "foo" matches "myfoo"
-    u'match-any': lambda s: _unicodify('%' + s + '%'),  #  "foo" matches "myfoobar"
-    u'match-strict': lambda s: s,                       #  "foo" matches only "foo"
+    'match-prefix': lambda s: s + '%',    #  "foo" matches "foobar"
+    'match-suffix': lambda s: '%' + s,    #  "foo" matches "myfoo"
+    'match-any': lambda s: '%' + s + '%', #  "foo" matches "myfoobar"
+    'match-strict': lambda s: s,          #  "foo" matches only "foo"
 }
 
-_operators = {u'and', u'or', u'not'}
-_type_constraints = {u'string', u'numeric', u'nullable'}
+_type_constraints = 'string', 'numeric', 'nullable'
 
 
 def _is_real_sequence(obj):
     return isinstance(obj, collections.Sequence) and not isinstance(obj, basestring)
-
-
-def _unicodify(value):
-    if _is_real_sequence(value):
-        return [_unicodify(x) for x in value]
-    return unicode(value)
 
 
 class Builder(object):
@@ -53,28 +46,16 @@ class Builder(object):
     Takes a model and set of constraints, and builds sqlalchemy queries from json.
     '''
 
-    def __init__(self, model, operators, type_constraints, query_constraints=None):
+    def __init__(self, model, type_constraints, query_constraints=None):
         '''
         model:              SQLAlchemy model to perform queries on
-
-        operators:          Dictionary of string -> list, whose keys are 'and', 'or', and 'not'.
-                            Each value is a list of strings which are allowed for that operator.
-                            Matches are CASE SENSITIVE.
-
-                            Example:
-                            operators = {
-                                'and': ['AND', '&&', '+'],
-                                'or': ['OR', '||'],
-                                'not': ['NOT', '~', '!']
-                            }
 
         type_constraints:   Dictionary of string -> list, whose keys are:
                                 'string', 'numeric', 'nullable'
                             For string and numeric, the lists are all column names that must be of that type on input.
                             nullable is a list of column names that can be null on input - by default, column names
-                            listed in string or numeric assume they cannot take null values, and passing null is
-                            invalid. Any input that contains column names not listed in string or numeric is invalid.
-                            It is invalid for a column name to have more than one type constraint.
+                            listed in string or numeric assume they cannot take null values.
+                            Including the same column in both string and numeric columns is invalid.
 
                             Example:
                             type_constraints = {
@@ -102,9 +83,9 @@ class Builder(object):
         query_constraints: (Optional) Dictonary of string -> integer, whose keys are:
                                 'breadth', 'depth', 'elements'
                             (All keys are optional) Each is a constraint on the query shape - if breadth is 5 and
-                            there is an OR node with an array of 12 column filters, the query will be rejected.
+                            there is an 'or' node with an array of 12 column filters, the query will be rejected.
                             depth refers to nesting, and elements is the total number of query elements. Logical
-                            operators (AND, OR, NOT) also count as elements, so 'AND': ['foo': 'bar'] represents
+                            operators (and, or, not) also count as elements, so 'and': ['foo': 'bar'] represents
                             two elements. Falsey values (None, 0) indicate no upper limit.
 
                             Example:
@@ -115,50 +96,10 @@ class Builder(object):
                             }
         '''
         self.model = model
-
-        if self.model is None:
-            raise ValueError(u"Must provide a valid model.")
-
-        self.operators = dict(operators)
-        operator_keys = set(self.operators.keys())
-        if not operator_keys.issuperset(_operators):
-            # Missing at least one operator
-            raise ValueError(u"Must specifiy aliases for all three logical operators.")
-        for operator in _operators:
-            operators = self.operators[operator]
-            if _is_real_sequence(operators):
-                self.operators[operator] = list(operators)
-            else:
-                self.operators[operator] = [operators]
-
-        self.type_constraints = {}
-        for type_c in _type_constraints:
-            columns = _unicodify(type_constraints[type_c])
-            if not _is_real_sequence(columns):
-                columns = [columns]
-            self.type_constraints[type_c] = columns
-        string_c = set(self.type_constraints[u'string'])
-        numeric_c = set(self.type_constraints[u'numeric'])
-        duplicate_constraints = string_c.intersection(numeric_c)
-        if duplicate_constraints:
-            # Found an element in both sets
-            raise ValueError(u"Specified two type constraints for the following: ".format(duplicate_constraints))
-
-        query_constraints = query_constraints or {}
+        self.type_constraints = type_constraints
         self.query_constraints = dict(DEFAULT_QUERY_CONSTRAINTS)
-        self.query_constraints.update(query_constraints)
-
-    @property
-    def max_breadth(self):
-        return self.query_constraints[u'breadth']
-
-    @property
-    def max_depth(self):
-        return self.query_constraints[u'depth']
-
-    @property
-    def max_elements(self):
-        return self.query_constraints[u'elements']
+        if query_constraints:
+            self.query_constraints.update(query_constraints)
 
     def build(self, json):
         '''
@@ -167,7 +108,7 @@ class Builder(object):
         Objects:
             Logical Operators
                 {
-                    operator: 'AND',
+                    operator: 'and',
                     value: [
                         OBJ1,
                         OBJ2,
@@ -191,7 +132,7 @@ class Builder(object):
                     value: 'pat'
                 }
 
-        Logical operators AND and OR take an array of values, while NOT takes a single value.
+        Logical operators 'and' and 'or' take an array of values, while 'not' takes a single value.
 
         It is invalid to have a logical operator as the value of a subquery.
 
@@ -219,18 +160,17 @@ class Builder(object):
         Delegate the build call based on key, comparing against self.operators and self.type_constraints
         Do not validate, or increment depth/count since the called builder will handle that.
         '''
-        operator = node[u'operator']
-        if operator in self.operators[u'and']:
-            build = lambda n, c, d: self._build_sql_sequence(n, c, d, sqlalchemy.and_)
-        elif operator in self.operators[u'or']:
-            build = lambda n, c, d: self._build_sql_sequence(n, c, d, sqlalchemy.or_)
-        elif operator in self.operators[u'not']:
-            build = lambda n, c, d: self._build_sql_unary(n, c, d, sqlalchemy.not_)
+        logical_operators = {
+            'and': (self._build_sql_sequence, sqlalchemy.and_),
+            'or': (self._build_sql_sequence, sqlalchemy.or_),
+            'not': (self._build_sql_unary, sqlalchemy.not_),
+        }
+        op = node['operator']
+        if op in logical_operators:
+            builder, func = logical_operators[op]
+            return builder(node, count, depth, func)
         else:
-            # Simple column filter
-            build = lambda n, c, d: self._build_column(n, c, d)
-
-        return build(node, count, depth)
+            return self._build_column(node, count, depth)
 
     def _build_sql_sequence(self, node, count, depth, func):
         '''
@@ -240,7 +180,7 @@ class Builder(object):
         count += 1
         depth += 1
         subqueries = []
-        for value in node[u'value']:
+        for value in node['value']:
             subquery, count = self._build(value, count, depth)
             subqueries.append(subquery)
         return func(*subqueries), count
@@ -251,10 +191,10 @@ class Builder(object):
         '''
         count += 1
         depth += 1
-        value = node[u'value']
+        value = node['value']
         self._validate_query_constraints(value, count, depth)
         if _is_real_sequence(value):
-            raise TypeError(u"Cannot compare a column to a sequence".format(node, value))
+            raise TypeError("Cannot compare a column to a sequence".format(node, value))
 
         subquery, count = self._build(node, count, depth)
         return func(subquery), count
@@ -264,20 +204,20 @@ class Builder(object):
         Delegate the call based on type
         Do not validate, or increment depth/count since the called builder will handle that.
         '''
-        column = node[u'column']
-        if column in self.type_constraints[u'string']:
+        column = node['column']
+        if column in self.type_constraints['string']:
             build = lambda n, c, d: self._build_column_string(n, c, d)
-        elif column in self.type_constraints[u'numeric']:
+        elif column in self.type_constraints['numeric']:
             build = lambda n, c, d: self._build_column_numeric(n, c, d)
         return build(node, count, depth)
 
     def _build_column_string(self, node, count, depth):
         count += 1
         depth += 1
-        operator = node[u'operator']
-        case = node[u'case']
-        column = node[u'column']
-        value = node[u'value']
+        operator = node['operator']
+        case = node['case']
+        column = node['column']
+        value = node['value']
         self._validate_query_constraints(value, count, depth)
         self._validate_nullable(value, column)
 
@@ -295,9 +235,9 @@ class Builder(object):
         count += 1
         depth += 1
 
-        operator = node[u'operator']
-        column = node[u'column']
-        value = node[u'value']
+        operator = node['operator']
+        column = node['column']
+        value = node['value']
         self._validate_query_constraints(value, count, depth)
         self._validate_nullable(column, value)
 
@@ -307,21 +247,25 @@ class Builder(object):
 
     def _validate_query_constraints(self, value, count, depth):
         '''Raises if any query constraints are violated'''
-        depth += 1
-        if self.max_depth and depth > self.max_depth:
-            raise InterrogateException(u'Depth limit ({}) exceeded'.format(self.max_depth))
+        max_breadth = self.query_constraints['breadth']
+        max_depth = self.query_constraints['depth']
+        max_elements = self.query_constraints['elements']
 
+        if max_depth and depth > max_depth:
+            raise InterrogateException('Depth limit ({}) exceeded'.format(max_depth))
+
+        element_breadth = 0
         if _is_real_sequence(value):
             element_breadth = len(value)
-            if self.max_breadth and element_breadth > self.max_breadth:
-                raise InterrogateException(u'Breadth limit ({}) exceeded'.format(self.max_breadth))
-            count += len(value)
-
-        count += 1
-        if self.max_elements and count > self.max_elements:
-            raise InterrogateException(u'Filter elements limit ({}) exceeded'.format(self.max_elements))
+        
+        if max_breadth and element_breadth > max_breadth:
+                raise InterrogateException('Breadth limit ({}) exceeded'.format(max_breadth))
+        
+        count += (element_breadth + 1)
+        if max_elements and count > max_elements:
+            raise InterrogateException('Filter elements limit ({}) exceeded'.format(max_elements))
 
     def _validate_nullable(self, column, value):
-        nullable = column in self.type_constraints[u'nullable']
+        nullable = column in self.type_constraints['nullable']
         if value is None and not nullable:
-            raise ValueError(u'Column "{}" cannot be null.'.format(column))
+            raise ValueError('Column "{}" cannot be null.'.format(column))
