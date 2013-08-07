@@ -34,47 +34,15 @@ STRING_MATCH_FUNCS = {
     'match-strict': lambda s: s,          #  "foo" matches only "foo"
 }
 
-_type_constraints = 'string', 'numeric', 'nullable'
-
 
 class Builder(object):
     '''
     Takes a model and set of constraints, and builds sqlalchemy queries from json.
     '''
 
-    def __init__(self, model, type_constraints, query_constraints=None):
+    def __init__(self, model, query_constraints=None):
         '''
         model:              SQLAlchemy model to perform queries on
-
-        type_constraints:   Dictionary of string -> list, whose keys are:
-                                'string', 'numeric', 'nullable'
-                            For string and numeric, the lists are all column names that must be of that type on input.
-                            nullable is a list of column names that can be null on input - by default, column names
-                            listed in string or numeric assume they cannot take null values.
-                            Including the same column in both string and numeric columns is invalid.
-
-                            Example:
-                            type_constraints = {
-                                'string': [
-                                    'name',
-                                    'address',
-                                    'email',
-                                    'phone'
-                                ],
-
-                                'numeric': [
-                                    'age',
-                                    'pets',
-                                    'followers',
-                                    'following'
-                                ],
-
-                                'nullable': [
-                                    'address',
-                                    'phone',
-                                    'followers'
-                                ]
-                            }
 
         query_constraints: (Optional) Dictonary of string -> integer, whose keys are:
                                 'breadth', 'depth', 'elements'
@@ -92,7 +60,6 @@ class Builder(object):
                             }
         '''
         self.model = model
-        self.type_constraints = type_constraints
         self.query_constraints = dict(DEFAULT_QUERY_CONSTRAINTS)
         if query_constraints:
             self.query_constraints.update(query_constraints)
@@ -112,14 +79,12 @@ class Builder(object):
                         OBJN
                     ]
                 }
-
             Subqueries: Numeric
                 {
                     column: 'age',
                     operator: '>=',
                     value: 18
                 }
-
             Subqueries: Strings
                 {
                     column: 'name',
@@ -129,18 +94,15 @@ class Builder(object):
                 }
 
         Logical operators 'and' and 'or' take an array of values, while 'not' takes a single value.
-
         It is invalid to have a logical operator as the value of a subquery.
 
         Numeric operators are:
             <, <=, ==, !=, >=, >
-
         String operators are:
             match-prefix    "foo" matches "foobar"
             match-suffix    "foo" matches "myfoo"
             match-any       "foo" matches "myfoobar"
             match-strict    "foo" matches only "foo"
-
         String case values are:
             ignore          "foo" matches "FOOBAR_CONSTANT"
             strict          "foo" does not match "FOOBAR"
@@ -153,7 +115,7 @@ class Builder(object):
 
     def _build(self, node, count, depth):
         '''
-        Delegate the build call based on key, comparing against self.operators and self.type_constraints
+        Delegate the build call based on node operator, comparing against logical operators
         '''
         count += 1
         depth += 1
@@ -194,40 +156,36 @@ class Builder(object):
         Delegate the call based on type
         '''
         column = node['column']
-        value = node['value']
-        self._validate_nullable(column, value)
+        # string => sqlalchemy.orm.attributes.InstrumentedAttribute
+        column = getattr(self.model, column)
+        ctype = column.type
 
-        if column in self.type_constraints['string']:
-            return self._build_column_string(node, count, depth)
-        elif column in self.type_constraints['numeric']:
-            return self._build_column_numeric(node, count, depth)
+        op = node['operator']
+        value = node['value']
+
+        if isinstance(ctype, sqlalchemy.types.String):
+            case = node['case']
+            return self._build_col_string(column, op, case, value), count
+        elif isinstance(ctype, sqlalchemy.types.Integer):
+            return self._build_col_integer(column, op, value), count
         else:
-            raise ValueError("Unknown column or type for column".format(column))
+            raise ValueError("Don't know how to handle column with type ({}, {})".format(column, ctype))
 
-    def _build_column_string(self, node, count, depth):
-        operator = node['operator']
-        case = node['case']
-        column = node['column']
-        value = node['value']
-
-        col = getattr(self.model, column, None)  # MyModel.my_column
+    def _build_col_string(self, col, op, case, value):
+        # Get column.like or column.ilike
         case_func = CASE_OPERATORS[case]
-        op = getattr(col, case_func)  # MyModel.my_column.ilike
+        func = getattr(col, case_func)
 
         # Compute search string based on operator
-        search_func = STRING_MATCH_FUNCS[operator]
+        search_func = STRING_MATCH_FUNCS[op]
         search = search_func(value)
-        return op(search), count
+        return func(search)
 
 
-    def _build_column_numeric(self, node, count, depth):
-        operator = node['operator']
-        column = node['column']
-        value = node['value']
-
-        op = NUMERIC_OPERATORS[operator]
-        col = getattr(self.model, column)
-        return op(col, value), count
+    def _build_col_integer(self, col, op, value):
+        # Convert op string to function
+        op = NUMERIC_OPERATORS[op]
+        return op(col, value)
 
     def _validate_query_constraints(self, value, count, depth):
         '''Raises if any query constraints are violated'''
@@ -241,15 +199,10 @@ class Builder(object):
         element_breadth = 1
         if isinstance(value, collections.Sequence) and not isinstance(value, basestring):
             element_breadth = len(value)
-        
+
         if max_breadth and element_breadth > max_breadth:
                 raise InterrogateException('Breadth limit ({}) exceeded'.format(max_breadth))
-        
+
         count += element_breadth
         if max_elements and count > max_elements:
             raise InterrogateException('Filter elements limit ({}) exceeded'.format(max_elements))
-
-    def _validate_nullable(self, column, value):
-        nullable = column in self.type_constraints['nullable']
-        if value is None and not nullable:
-            raise ValueError('Column "{}" cannot be null.'.format(column))
