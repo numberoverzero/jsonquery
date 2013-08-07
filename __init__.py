@@ -37,10 +37,6 @@ STRING_MATCH_FUNCS = {
 _type_constraints = 'string', 'numeric', 'nullable'
 
 
-def _is_real_sequence(obj):
-    return isinstance(obj, collections.Sequence) and not isinstance(obj, basestring)
-
-
 class Builder(object):
     '''
     Takes a model and set of constraints, and builds sqlalchemy queries from json.
@@ -158,8 +154,11 @@ class Builder(object):
     def _build(self, node, count, depth):
         '''
         Delegate the build call based on key, comparing against self.operators and self.type_constraints
-        Do not validate, or increment depth/count since the called builder will handle that.
         '''
+        count += 1
+        depth += 1
+        value = node['value']
+        self._validate_query_constraints(value, count, depth)
         logical_operators = {
             'and': (self._build_sql_sequence, sqlalchemy.and_),
             'or': (self._build_sql_sequence, sqlalchemy.or_),
@@ -177,8 +176,6 @@ class Builder(object):
         func is either sqlalchemy.and_ or sqlalchemy.or_
         Build each subquery in node['value'], then combine with func(*subqueries)
         '''
-        count += 1
-        depth += 1
         subqueries = []
         for value in node['value']:
             subquery, count = self._build(value, count, depth)
@@ -189,37 +186,29 @@ class Builder(object):
         '''
         func is sqlalchemy.not_ (may support others)
         '''
-        count += 1
-        depth += 1
-        value = node['value']
-        self._validate_query_constraints(value, count, depth)
-        if _is_real_sequence(value):
-            raise TypeError("Cannot compare a column to a sequence".format(node, value))
-
         subquery, count = self._build(node, count, depth)
         return func(subquery), count
 
     def _build_column(self, node, count, depth):
         '''
         Delegate the call based on type
-        Do not validate, or increment depth/count since the called builder will handle that.
         '''
         column = node['column']
+        value = node['value']
+        self._validate_nullable(column, value)
+
         if column in self.type_constraints['string']:
-            build = lambda n, c, d: self._build_column_string(n, c, d)
+            return self._build_column_string(node, count, depth)
         elif column in self.type_constraints['numeric']:
-            build = lambda n, c, d: self._build_column_numeric(n, c, d)
-        return build(node, count, depth)
+            return self._build_column_numeric(node, count, depth)
+        else:
+            raise ValueError("Unknown column or type for column".format(column))
 
     def _build_column_string(self, node, count, depth):
-        count += 1
-        depth += 1
         operator = node['operator']
         case = node['case']
         column = node['column']
         value = node['value']
-        self._validate_query_constraints(value, count, depth)
-        self._validate_nullable(value, column)
 
         col = getattr(self.model, column, None)  # MyModel.my_column
         case_func = CASE_OPERATORS[case]
@@ -232,14 +221,9 @@ class Builder(object):
 
 
     def _build_column_numeric(self, node, count, depth):
-        count += 1
-        depth += 1
-
         operator = node['operator']
         column = node['column']
         value = node['value']
-        self._validate_query_constraints(value, count, depth)
-        self._validate_nullable(column, value)
 
         op = NUMERIC_OPERATORS[operator]
         col = getattr(self.model, column)
@@ -254,14 +238,14 @@ class Builder(object):
         if max_depth and depth > max_depth:
             raise InterrogateException('Depth limit ({}) exceeded'.format(max_depth))
 
-        element_breadth = 0
-        if _is_real_sequence(value):
+        element_breadth = 1
+        if isinstance(value, collections.Sequence) and not isinstance(value, basestring):
             element_breadth = len(value)
         
         if max_breadth and element_breadth > max_breadth:
                 raise InterrogateException('Breadth limit ({}) exceeded'.format(max_breadth))
         
-        count += (element_breadth + 1)
+        count += element_breadth
         if max_elements and count > max_elements:
             raise InterrogateException('Filter elements limit ({}) exceeded'.format(max_elements))
 
