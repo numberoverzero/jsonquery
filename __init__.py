@@ -13,7 +13,7 @@ DEFAULT_QUERY_CONSTRAINTS = {
     'elements': 64
 }
 
-NUMERIC_OPERATORS = {
+INTEGER_OPERATORS = {
     '<': operator.lt,
     '<=': operator.le,
     '!=': operator.ne,
@@ -22,17 +22,10 @@ NUMERIC_OPERATORS = {
     '>': operator.gt,
 }
 
-CASE_OPERATORS = {
-    'strict': 'like',
-    'ignore': 'ilike',
-}
-
-STRING_MATCH_FUNCS = {
-    'match-prefix': lambda s: s + '%',    #  "foo" matches "foobar"
-    'match-suffix': lambda s: '%' + s,    #  "foo" matches "myfoo"
-    'match-any': lambda s: '%' + s + '%', #  "foo" matches "myfoobar"
-    'match-strict': lambda s: s,          #  "foo" matches only "foo"
-}
+STRING_OPERATORS = [
+    'like',
+    'ilike'
+]
 
 
 class Builder(object):
@@ -88,9 +81,8 @@ class Builder(object):
             Subqueries: Strings
                 {
                     column: 'name',
-                    operator: 'match-prefix',
-                    case: 'ignore',
-                    value: 'pat'
+                    operator: 'ilike',
+                    value: 'pat%'
                 }
 
         Logical operators 'and' and 'or' take an array of values, while 'not' takes a single value.
@@ -99,14 +91,11 @@ class Builder(object):
         Numeric operators are:
             <, <=, ==, !=, >=, >
         String operators are:
-            match-prefix    "foo" matches "foobar"
-            match-suffix    "foo" matches "myfoo"
-            match-any       "foo" matches "myfoobar"
-            match-strict    "foo" matches only "foo"
-        String case values are:
-            ignore          "foo" matches "FOOBAR_CONSTANT"
-            strict          "foo" does not match "FOOBAR"
+            like    case-sensitive match
+            ilike   case-insensitive match
 
+            String wildcard character is % (so "pat%" matches "patrick" and "patty")
+            with default escape character '/'
         '''
 
         count = depth = 0
@@ -155,37 +144,29 @@ class Builder(object):
         '''
         Delegate the call based on type
         '''
-        column = node['column']
         # string => sqlalchemy.orm.attributes.InstrumentedAttribute
+        column = node['column']
         column = getattr(self.model, column)
-        ctype = column.type
 
         op = node['operator']
         value = node['value']
 
-        if isinstance(ctype, sqlalchemy.types.String):
-            case = node['case']
-            return self._build_col_string(column, op, case, value), count
-        elif isinstance(ctype, sqlalchemy.types.Integer):
-            return self._build_col_integer(column, op, value), count
-        else:
-            raise ValueError("Don't know how to handle column with type ({}, {})".format(column, ctype))
+        builders = {
+            sqlalchemy.types.String: self._build_col_string,
+            sqlalchemy.types.Integer: self._build_col_integer
+        }
+        build = builders[column.type]
 
-    def _build_col_string(self, col, op, case, value):
-        # Get column.like or column.ilike
-        case_func = CASE_OPERATORS[case]
-        func = getattr(col, case_func)
+        return build(column, op, value), count
 
-        # Compute search string based on operator
-        search_func = STRING_MATCH_FUNCS[op]
-        search = search_func(value)
-        return func(search)
+    def _build_col_string(self, col, op, value):
+        func = getattr(col, op)
+        return func(value)
 
 
     def _build_col_integer(self, col, op, value):
-        # Convert op string to function
-        op = NUMERIC_OPERATORS[op]
-        return op(col, value)
+        func = INTEGER_OPERATORS[op]
+        return func(col, value)
 
     def _validate_query_constraints(self, value, count, depth):
         '''Raises if any query constraints are violated'''
