@@ -2,18 +2,13 @@ import operator
 import collections
 import sqlalchemy
 
-
-class InterrogateException(Exception):
-    pass
-
-
 DEFAULT_QUERY_CONSTRAINTS = {
-    'breadth': None,
-    'depth': None,
-    'elements': 64
+    'max_breadth': None,
+    'max_depth': None,
+    'max_elements': 64
 }
 
-INTEGER_OPERATORS = {
+NUMERIC_OPERATORS = {
     '<': operator.lt,
     '<=': operator.le,
     '!=': operator.ne,
@@ -22,70 +17,54 @@ INTEGER_OPERATORS = {
     '>': operator.gt,
 }
 
-STRING_OPERATORS = [
-    'like',
-    'ilike'
-]
+STRING_OPERATORS = {
+    'like': lambda col, value: getattr(col, 'like')(value),
+    'ilike': lambda col, value: getattr(col, 'ilike')(value)
+}
 
+TYPE_OPERATORS = {
+    sqlalchemy.types.String: STRING_OPERATORS,
+    sqlalchemy.types.Integer: NUMERIC_OPERATORS
+}
 
-class Builder(object):
+def jsonquery(session, model, json, **kwargs):
     '''
-    Takes a model and set of constraints, and builds sqlalchemy queries from json.
-    '''
+    Returns a query object built from the given json.
+    Usage:
+        query = jsonquery(session, model, json, query_constraints)
+        rows = query.all()
 
-    def __init__(self, model, query_constraints=None):
-        '''
-        model:              SQLAlchemy model to perform queries on
+    session:
+        SQLAlchemy session to build query on
 
-        query_constraints: (Optional) Dictonary of string -> integer, whose keys are:
-                                'breadth', 'depth', 'elements'
-                            (All keys are optional) Each is a constraint on the query shape - if breadth is 5 and
-                            there is an 'or' node with an array of 12 column filters, the query will be rejected.
-                            depth refers to nesting, and elements is the total number of query elements. Logical
-                            operators (and, or, not) also count as elements, so 'and': ['foo': 'bar'] represents
-                            two elements. Falsey values (None, 0) indicate no upper limit.
+    model:
+        SQLAlchemy model to perform queries on
 
-                            Example:
-                            query_constraints = {
-                                'breadth': None,
-                                'depth': 32,
-                                'elements': 64
-                            }
-        '''
-        self.model = model
-        self.query_constraints = dict(DEFAULT_QUERY_CONSTRAINTS)
-        if query_constraints:
-            self.query_constraints.update(query_constraints)
+    json:
+        Logical Operators
+            {
+                operator: 'and',
+                value: [
+                    OBJ1,
+                    OBJ2,
+                    ...
+                    OBJN
+                ]
+            }
+        Columns: Numeric
+            {
+                column: 'age',
+                operator: '>=',
+                value: 18
+            }
+        Columns: Strings
+            {
+                column: 'name',
+                operator: 'ilike',
+                value: 'pat%'
+            }
 
-    def build(self, json):
-        '''
-        Builds a query from the given json.
-
-        Objects:
-            Logical Operators
-                {
-                    operator: 'and',
-                    value: [
-                        OBJ1,
-                        OBJ2,
-                        ...
-                        OBJN
-                    ]
-                }
-            Subqueries: Numeric
-                {
-                    column: 'age',
-                    operator: '>=',
-                    value: 18
-                }
-            Subqueries: Strings
-                {
-                    column: 'name',
-                    operator: 'ilike',
-                    value: 'pat%'
-                }
-
-        Logical operators 'and' and 'or' take an array of values, while 'not' takes a single value.
+        Logical operators 'and' and 'or' take an array, while 'not' takes a single value.
         It is invalid to have a logical operator as the value of a subquery.
 
         Numeric operators are:
@@ -96,94 +75,86 @@ class Builder(object):
 
             String wildcard character is % (so "pat%" matches "patrick" and "patty")
             with default escape character '/'
-        '''
 
-        count = depth = 0
-        query, total_elements = self._build(json, count, depth)
-        return self.model.query.filter(query)
+    max_breadth (Optional):
+        Maximum number of elements in a single and/or operator. Default is None.
 
-    def _build(self, node, count, depth):
-        '''
-        Delegate the build call based on node operator, comparing against logical operators
-        '''
-        count += 1
-        depth += 1
-        value = node['value']
-        self._validate_query_constraints(value, count, depth)
-        logical_operators = {
-            'and': (self._build_sql_sequence, sqlalchemy.and_),
-            'or': (self._build_sql_sequence, sqlalchemy.or_),
-            'not': (self._build_sql_unary, sqlalchemy.not_),
-        }
-        op = node['operator']
-        if op in logical_operators:
-            builder, func = logical_operators[op]
-            return builder(node, count, depth, func)
-        else:
-            return self._build_column(node, count, depth)
+    max_depth (Optional):
+        Maximum nested depth of a constraint.  Default is None.
 
-    def _build_sql_sequence(self, node, count, depth, func):
-        '''
-        func is either sqlalchemy.and_ or sqlalchemy.or_
-        Build each subquery in node['value'], then combine with func(*subqueries)
-        '''
-        subqueries = []
-        for value in node['value']:
-            subquery, count = self._build(value, count, depth)
-            subqueries.append(subquery)
-        return func(*subqueries), count
+    max_elements (Optional):
+        Maximum number of constraints and logical operators allowed in a query.  Default is 64.
+    '''
+    constraints = {key: kwargs.get(key, value) for key, value in DEFAULT_QUERY_CONSTRAINTS.iteritems()}
+    count = depth = 0
+    criterion, total_elements = _build(json, count, depth, model, constraints)
+    return session.query(model).filter(criterion)
 
-    def _build_sql_unary(self, node, count, depth, func):
-        '''
-        func is sqlalchemy.not_ (may support others)
-        '''
-        subquery, count = self._build(node, count, depth)
-        return func(subquery), count
+def _build(node, count, depth, model, constraints):
+    count += 1
+    depth += 1
+    value = node['value']
+    _validate_query_constraints(value, count, depth, constraints)
+    logical_operators = {
+        'and': (_build_sql_sequence, sqlalchemy.and_),
+        'or': (_build_sql_sequence, sqlalchemy.or_),
+        'not': (_build_sql_unary, sqlalchemy.not_),
+    }
+    op = node['operator']
+    if op in logical_operators:
+        builder, func = logical_operators[op]
+        return builder(node, count, depth, model, constraints, func)
+    else:
+        return _build_column(node, model), count
 
-    def _build_column(self, node, count, depth):
-        '''
-        Delegate the call based on type
-        '''
-        # string => sqlalchemy.orm.attributes.InstrumentedAttribute
-        column = node['column']
-        column = getattr(self.model, column)
-
-        op = node['operator']
-        value = node['value']
-
-        builders = {
-            sqlalchemy.types.String: self._build_col_string,
-            sqlalchemy.types.Integer: self._build_col_integer
-        }
-        build = builders[column.type]
-
-        return build(column, op, value), count
-
-    def _build_col_string(self, col, op, value):
-        func = getattr(col, op)
-        return func(value)
-
-
-    def _build_col_integer(self, col, op, value):
-        func = INTEGER_OPERATORS[op]
-        return func(col, value)
-
-    def _validate_query_constraints(self, value, count, depth):
+def _validate_query_constraints(value, count, depth, constraints):
         '''Raises if any query constraints are violated'''
-        max_breadth = self.query_constraints['breadth']
-        max_depth = self.query_constraints['depth']
-        max_elements = self.query_constraints['elements']
+        max_breadth = constraints['max_breadth']
+        max_depth = constraints['max_depth']
+        max_elements = constraints['max_elements']
 
         if max_depth and depth > max_depth:
-            raise InterrogateException('Depth limit ({}) exceeded'.format(max_depth))
+            raise ValueError('Depth limit ({}) exceeded'.format(max_depth))
 
         element_breadth = 1
         if isinstance(value, collections.Sequence) and not isinstance(value, basestring):
             element_breadth = len(value)
 
         if max_breadth and element_breadth > max_breadth:
-                raise InterrogateException('Breadth limit ({}) exceeded'.format(max_breadth))
+                raise ValueError('Breadth limit ({}) exceeded'.format(max_breadth))
 
         count += element_breadth
         if max_elements and count > max_elements:
-            raise InterrogateException('Filter elements limit ({}) exceeded'.format(max_elements))
+            raise ValueError('Filter elements limit ({}) exceeded'.format(max_elements))
+
+def _build_sql_sequence( node, count, depth, model, constraints, func):
+    '''
+    func is either sqlalchemy.and_ or sqlalchemy.or_
+    Build each subquery in node['value'], then combine with func(*subqueries)
+    '''
+    subqueries = []
+    for value in node['value']:
+        subquery, count = _build(value, count, depth, model, constraints)
+        subqueries.append(subquery)
+    return func(*subqueries), count
+
+def _build_sql_unary( node, count, depth, model, constraints, func):
+    '''
+    func is sqlalchemy.not_ (may support others)
+    '''
+    value = node['value']
+    subquery, count = _build(value, count, depth, model, constraints)
+    return func(subquery), count
+
+def _build_column(node, model):
+    # string => sqlalchemy.orm.attributes.InstrumentedAttribute
+    column = node['column']
+    column = getattr(model, column)
+    ctype = type(column.type)
+
+    op = node['operator']
+    value = node['value']
+
+    op_map = TYPE_OPERATORS[ctype]  # Get a set of operators for the type
+    func = op_map[op]  # Get the function for the operator
+    return func(column, value)
