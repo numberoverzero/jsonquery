@@ -3,7 +3,7 @@ import unittest
 from sqlalchemy import Column, Integer, String, create_engine, and_, or_, not_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from interrogate import jsonquery
+from jsonquery import jsonquery
 
 
 def jsonify(dict):
