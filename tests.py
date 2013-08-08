@@ -1,4 +1,4 @@
-import ujson
+import json
 import unittest
 from sqlalchemy import Column, Integer, String, create_engine, and_, or_, not_
 from sqlalchemy.orm import sessionmaker
@@ -8,7 +8,7 @@ from jsonquery import jsonquery
 
 def jsonify(dict):
     # Easy validation that the test data isn't invalid json
-    return ujson.loads(ujson.dumps(dict))
+    return json.loads(json.dumps(dict))
 
 
 class JsonQueryTestCase(unittest.TestCase):
