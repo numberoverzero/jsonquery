@@ -85,7 +85,8 @@ def jsonquery(session, model, json, **kwargs):
     max_elements (Optional):
         Maximum number of constraints and logical operators allowed in a query.  Default is 64.
     '''
-    constraints = {key: kwargs.get(key, value) for key, value in DEFAULT_QUERY_CONSTRAINTS.iteritems()}
+    constraints = dict(DEFAULT_QUERY_CONSTRAINTS)
+    constraints.update(kwargs)
     count = depth = 0
     criterion, total_elements = _build(json, count, depth, model, constraints)
     return session.query(model).filter(criterion)
