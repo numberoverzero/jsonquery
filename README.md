@@ -63,17 +63,11 @@ Supported Data Types
 
 Presently, jsonquery supports Integers and Strings.  More to come in the immediate future!
 
-Motivation
+Future Goals
 ========================================================
-
-I want to build complex sql queries from a request body, and json is a nice way
-to specify nested queries.  As far as security is concerned, column/value names are passed
-into a set of functions which is hardcoded, and is primarily either attribute lookup
-(string functions like, ilike) or standard mathematical operators (operator.gt, for instance).
 
 There are a few features I want to add, but these are mostly convenience and aren't necessary to
 the core application, which I believe is satisfied.
-
 
 Compressed and/or format
 --------------------------------------------------------
@@ -159,3 +153,11 @@ Add unobtrusive column/operator white-listing
 This was in the first version, but I cut it because I think a json parser could handle that
 validation better.  It may be better to keep this component slim, and let users make their own
 filtering step using parsers.
+
+Motivation
+========================================================
+
+I want to build complex sql queries from a request body, and json is a nice way
+to specify nested queries.  As far as security is concerned, column/value names are passed
+into a set of functions which is hardcoded, and is primarily either attribute lookup
+(string functions like, ilike) or standard mathematical operators (operator.gt, for instance).
