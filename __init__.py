@@ -8,24 +8,7 @@ DEFAULT_QUERY_CONSTRAINTS = {
     'max_elements': 64
 }
 
-def _attr_op(op):
-    '''
-    Helper for constructing functions that are attributes of the column
-    that take a single argument, such as MyColumn.like(foo)
-    '''
-    return lambda col, value: getattr(col, op)(value)
-
-
-OPERATORS = {
-    '<': operator.lt,
-    '<=': operator.le,
-    '!=': operator.ne,
-    '==': operator.eq,
-    '>=': operator.ge,
-    '>': operator.gt,
-    'like': _attr_op('like'),
-    'ilike': _attr_op('ilike'),
-}
+OPERATORS = {}
 
 def register_operator(opstring, func):
     '''
@@ -56,6 +39,26 @@ def register_operator(opstring, func):
         See http://docs.sqlalchemy.org/en/rel_0_8/orm/query.html#sqlalchemy.orm.query.Query.filter.
     '''
     OPERATORS[opstring] = func
+
+binops = {
+    '<': operator.lt,
+    '<=': operator.le,
+    '!=': operator.ne,
+    '==': operator.eq,
+    '>=': operator.ge,
+    '>': operator.gt,
+}
+for opstring, func in binops.iteritems():
+    register_operator(opstring, func)
+
+attr_funcs = [
+    'like',
+    'ilike',
+    'in_'
+]
+def attr_op(op): return lambda col, value: getattr(col, op)(value)
+for opstring in attr_funcs:
+    register_operator(opstring, attr_op(opstring))
 
 
 def jsonquery(session, model, json, **kwargs):
@@ -186,5 +189,4 @@ def _build_column(node, model):
     op = node['operator']
     value = node['value']
 
-    func = OPERATORS[op]
-    return func(column, value)
+    return OPERATORS[op](column, value)
