@@ -8,24 +8,55 @@ DEFAULT_QUERY_CONSTRAINTS = {
     'max_elements': 64
 }
 
-NUMERIC_OPERATORS = {
+def _attr_op(op):
+    '''
+    Helper for constructing functions that are attributes of the column
+    that take a single argument, such as MyColumn.like(foo)
+    '''
+    return lambda col, value: getattr(col, op)(value)
+
+
+OPERATORS = {
     '<': operator.lt,
     '<=': operator.le,
     '!=': operator.ne,
     '==': operator.eq,
     '>=': operator.ge,
     '>': operator.gt,
+    'like': _attr_op('like'),
+    'ilike': _attr_op('ilike'),
 }
 
-STRING_OPERATORS = {
-    'like': lambda col, value: getattr(col, 'like')(value),
-    'ilike': lambda col, value: getattr(col, 'ilike')(value)
-}
+def register_operator(opstring, func):
+    '''
+    Registers a function so that the operator can be used in queries.
 
-TYPE_OPERATORS = {
-    sqlalchemy.types.String: STRING_OPERATORS,
-    sqlalchemy.types.Integer: NUMERIC_OPERATORS
-}
+    opstring:
+        The string used to reference this function in json queries
+
+    func:
+        Function that takes a column object (sqlalchemy.orm.attributes.InstrumentedAttribute)
+        and a value and returns a criterion to be passed to session.query(model).filter()
+
+        Example: Adding the >= operator
+            def gt(column, value):
+                return column >= value
+            register_operator('>=', gt)
+
+            # This can be simplified to:
+            import operator
+            register_operator('>=', operator.gt)
+
+        Example: Adding the column.in_ operator
+            def in_(column, value):
+                func = getattr(column, 'in_')
+                return func(value)
+            register_operator('in_', in_)
+
+        See http://docs.sqlalchemy.org/en/rel_0_8/orm/query.html#sqlalchemy.orm.query.Query.filter.
+    '''
+    OPERATORS[opstring] = func
+
 
 def jsonquery(session, model, json, **kwargs):
     '''
@@ -151,11 +182,9 @@ def _build_column(node, model):
     # string => sqlalchemy.orm.attributes.InstrumentedAttribute
     column = node['column']
     column = getattr(model, column)
-    ctype = type(column.type)
 
     op = node['operator']
     value = node['value']
 
-    op_map = TYPE_OPERATORS[ctype]  # Get a set of operators for the type
-    func = op_map[op]  # Get the function for the operator
+    func = OPERATORS[op]
     return func(column, value)
