@@ -61,7 +61,26 @@ at least 21::
 Supported Data Types
 ========================================================
 
-Presently, jsonquery supports Integers and Strings.  More to come in the immediate future!
+jsonquery doesn't care about column type.  Instead, it uses a whitelist of operators,
+where keys are strings (the same that would be passed in the "operator" field of a node)
+and the values are functions that take a column object and a value and return a
+sqlalchemy criterion.  Here are some examples::
+
+    def greater_than(column, value):
+        return column > value
+    register_operator(">", greater_than)
+
+    def like(column, value):
+        like_func = getattr(column, 'like')
+        return like_func(value)
+    register_operator("like", like)
+
+By default, the following are registered::
+
+    >, >=, ==, !=, <=, <
+    like, ilike, in_
+
+Use ``unregister_operator(opstring)`` to remove an operator.
 
 Future Goals
 ========================================================
@@ -137,22 +156,6 @@ Or, when the operator is the same::
             ]
         }
     }
-
-Make column operators pluggable
---------------------------------------------------------
-
-Right now String and Integer operators are hardcoded, and there's no good way
-to say "here's the function to use when the column is my custom FooType".  Besides
-supporting all of the build-in sqlalchemy column types, it must be possible to easily
-integrate custom columns, prefereably allowing re-use of existing functions
-(so that users don't need to import operator and refer to operator.gt all over).
-
-Add unobtrusive column/operator white-listing
---------------------------------------------------------
-
-This was in the first version, but I cut it because I think a json parser could handle that
-validation better.  It may be better to keep this component slim, and let users make their own
-filtering step using parsers.
 
 Motivation
 ========================================================
