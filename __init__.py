@@ -1,6 +1,16 @@
 import operator
 import collections
+import sys
 import sqlalchemy
+
+PYTHON_VERSION = sys.version_info
+
+if PYTHON_VERSION > (3, 0, 0):
+    # PYTHON 3k: strings == unicode
+    is_string = lambda s: isinstance(s, str)
+else:
+    # PYTHON 2k: strings can be str or unicode
+    is_string = lambda s: isinstance(s, basestring)
 
 DEFAULT_QUERY_CONSTRAINTS = {
     'max_breadth': None,
@@ -152,11 +162,7 @@ def _validate_query_constraints(value, count, depth, constraints):
             raise ValueError('Depth limit ({}) exceeded'.format(max_depth))
 
         element_breadth = 1
-        try:
-            is_string = isinstance(value, basestring)
-        except NameError:
-            is_string = isinstance(value, str)
-        if isinstance(value, collections.Sequence) and not is_string:
+        if isinstance(value, collections.Sequence) and not is_string(value):
             element_breadth = len(value)
 
         if max_breadth and element_breadth > max_breadth:
