@@ -48,7 +48,7 @@ binops = {
     '>=': operator.ge,
     '>': operator.gt,
 }
-for opstring, func in binops.iteritems():
+for opstring, func in binops.items():
     register_operator(opstring, func)
 
 attr_funcs = [
@@ -152,7 +152,11 @@ def _validate_query_constraints(value, count, depth, constraints):
             raise ValueError('Depth limit ({}) exceeded'.format(max_depth))
 
         element_breadth = 1
-        if isinstance(value, collections.Sequence) and not isinstance(value, basestring):
+        try:
+            is_string = isinstance(value, basestring)
+        except NameError:
+            is_string = isinstance(value, str)
+        if isinstance(value, collections.Sequence) and not is_string:
             element_breadth = len(value)
 
         if max_breadth and element_breadth > max_breadth:
