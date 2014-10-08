@@ -1,5 +1,5 @@
 import json
-import unittest
+import pytest
 from sqlalchemy import Column, Integer, String, create_engine, and_, or_, not_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -11,25 +11,57 @@ def jsonify(dict):
     return json.loads(json.dumps(dict))
 
 
-class JsonQueryTestCase(unittest.TestCase):
+@pytest.fixture()
+def user_setup(request):
+    Base = declarative_base()
 
-    def setUp(self):
-        Base = declarative_base()
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column(Integer, primary_key=True)
+        name = Column(String)
+        email = Column(String)
+        age = Column(Integer)
+        height = Column(Integer)
+    engine = create_engine("sqlite://", echo=True)
+    Base.metadata.create_all(engine)
 
-        class User(Base):
-            __tablename__ = 'users'
-            id = Column(Integer, primary_key=True)
-            name = Column(String)
-            email = Column(String)
-            age = Column(Integer)
-            height = Column(Integer)
-        engine = create_engine("sqlite://", echo=True)
-        Base.metadata.create_all(engine)
-        self.model = User
-        self.session = sessionmaker(bind=engine)()
+    request.cls.model = User
+    request.cls.engine = engine
+    request.cls.session = sessionmaker(bind=engine)()
 
-    def tearDown(self):
-        self.session.close()
+
+@pytest.fixture()
+def foo_setup(request):
+    Base = declarative_base()
+
+    class Foo(Base):
+        __tablename__ = 'foos'
+        id = Column(Integer, primary_key=True)
+        foo = Column(Integer)
+    engine = create_engine("sqlite://", echo=True)
+    Base.metadata.create_all(engine)
+    request.cls.model = Foo
+    request.cls.engine = engine
+    request.cls.session = sessionmaker(bind=engine)()
+
+
+@pytest.fixture()
+def string_setup(request):
+    Base = declarative_base()
+
+    class String(Base):
+        __tablename__ = 'strings'
+        id = Column(Integer, primary_key=True)
+        string = Column(String)
+    engine = create_engine("sqlite://", echo=True)
+    Base.metadata.create_all(engine)
+    request.cls.model = String
+    request.cls.engine = engine
+    request.cls.session = sessionmaker(bind=engine)()
+
+
+@pytest.mark.usefixtures("user_setup")
+class TestQuery():
 
     def add_user(self, **kwargs):
         user = self.model(**kwargs)
@@ -67,7 +99,7 @@ class JsonQueryTestCase(unittest.TestCase):
             ]
         })
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             jsonquery(self.session, self.model, json, max_elements=1).one()
 
     def test_depth_limit(self):
@@ -84,7 +116,7 @@ class JsonQueryTestCase(unittest.TestCase):
             ]
         })
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             jsonquery(self.session, self.model, json, max_depth=1).one()
 
     def test_breadth_limit(self):
@@ -106,7 +138,7 @@ class JsonQueryTestCase(unittest.TestCase):
             ]
         })
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             jsonquery(self.session, self.model, json, max_breadth=1).one()
 
     def test_basic_and(self):
@@ -215,26 +247,13 @@ class JsonQueryTestCase(unittest.TestCase):
         assert set(actual_users) == set(expected_users)
 
 
-class IntegerColumnTestCase(unittest.TestCase):
+@pytest.mark.usefixtures("foo_setup")
+class IntegerColumnTestCase():
 
     def setUp(self):
-        Base = declarative_base()
-
-        class Foo(Base):
-            __tablename__ = 'foos'
-            id = Column(Integer, primary_key=True)
-            foo = Column(Integer)
-        engine = create_engine("sqlite://", echo=True)
-        Base.metadata.create_all(engine)
-        self.model = Foo
-        self.session = sessionmaker(bind=engine)()
-
         self.add_foo(10)
         self.add_foo(15)
         self.add_foo(20)
-
-    def tearDown(self):
-        self.session.close()
 
     def add_foo(self, value):
         foo = self.model(foo=value)
@@ -309,33 +328,20 @@ class IntegerColumnTestCase(unittest.TestCase):
         assert set(actual_foos) == set(expected_foos)
 
 
-class StringColumnTestCase(unittest.TestCase):
+@pytest.mark.usefixtures("string_setup")
+class StringColumnTestCase():
 
     def setUp(self):
-        Base = declarative_base()
+        self.add_string('Hello')
+        self.add_string('hello')
+        self.add_string('HelloWorld')
+        self.add_string('helloworld')
+        self.add_string('HelloWorldString')
+        self.add_string('helloworldstring')
 
-        class Foo(Base):
-            __tablename__ = 'foos'
-            id = Column(Integer, primary_key=True)
-            foo = Column(String)
-        engine = create_engine("sqlite://", echo=True)
-        Base.metadata.create_all(engine)
-        self.model = Foo
-        self.session = sessionmaker(bind=engine)()
-
-        self.add_foo(u'Hello')
-        self.add_foo(u'hello')
-        self.add_foo('HelloWorld')
-        self.add_foo('helloworld')
-        self.add_foo('HelloWorldString')
-        self.add_foo('helloworldstring')
-
-    def tearDown(self):
-        self.session.close()
-
-    def add_foo(self, value):
-        foo = self.model(foo=value)
-        self.session.add(foo)
+    def add_string(self, value):
+        string = self.model(string=value)
+        self.session.add(string)
         self.session.commit()
 
     @property
@@ -344,14 +350,15 @@ class StringColumnTestCase(unittest.TestCase):
 
     def like_value(self, value):
         json = jsonify({
-            'column': 'foo',
+            'column': 'string',
             'value': value,
             'operator': 'like'
         })
-        actual_foos = jsonquery(self.session, self.model, json).all()
-        expected_foos = self.query.filter(self.model.foo.like(value)).all()
+        actual_strings = jsonquery(self.session, self.model, json).all()
+        expected_strings = self.query.filter(
+            self.model.string.like(value)).all()
 
-        return actual_foos, expected_foos
+        return actual_strings, expected_strings
 
     def test_basic_like_ignores_case(self):
         '''

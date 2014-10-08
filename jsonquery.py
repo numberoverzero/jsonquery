@@ -10,7 +10,7 @@ if PYTHON_VERSION > (3, 0, 0):
     is_string = lambda s: isinstance(s, str)
 else:
     # PYTHON 2k: strings can be str or unicode
-    is_string = lambda s: isinstance(s, basestring)
+    is_string = lambda s: isinstance(s, basestring)  # flake8: noqa
 
 DEFAULT_QUERY_CONSTRAINTS = {
     'max_breadth': None,
