@@ -5,10 +5,10 @@ import sqlalchemy
 
 PYTHON_VERSION = sys.version_info
 
-if PYTHON_VERSION > (3, 0, 0):
+if PYTHON_VERSION > (3, 0, 0):  # pragma: no cover
     # PYTHON 3k: strings == unicode
     is_string = lambda s: isinstance(s, str)
-else:
+else:  # pragma: no cover
     # PYTHON 2k: strings can be str or unicode
     is_string = lambda s: isinstance(s, basestring)  # flake8: noqa
 

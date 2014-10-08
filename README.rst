@@ -1,6 +1,11 @@
 jsonquery
 ========================================================
 
+.. image:: https://travis-ci.org/numberoverzero/jsonquery.svg?branch=master
+    :target: https://travis-ci.org/numberoverzero/jsonquery
+.. image:: https://coveralls.io/repos/numberoverzero/jsonquery/badge.png?branch=master
+    :target: https://coveralls.io/r/numberoverzero/jsonquery?branch=master
+
 Basic json -> sqlalchemy query builder
 
 
