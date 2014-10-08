@@ -162,10 +162,9 @@ Or, when the operator is the same::
         }
     }
 
-Motivation
+Contributors
 ========================================================
 
-I want to build complex sql queries from a request body, and json is a nice way
-to specify nested queries.  As far as security is concerned, column/value names are passed
-into a set of functions which is hardcoded, and is primarily either attribute lookup
-(string functions like, ilike) or standard mathematical operators (operator.gt, for instance).
+* duesenfranz_ - Python 3 compatibility
+
+.. _duesenfranz: https://github.com/duesenfranz
