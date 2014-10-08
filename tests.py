@@ -147,7 +147,8 @@ class JsonQueryTestCase(unittest.TestCase):
             ]
         })
         actual_user = jsonquery(self.session, self.model, json).one()
-        expected_user = self.query.filter(and_(self.model.age == 10, self.model.height == 15)).one()
+        expected_user = self.query.filter(
+            and_(self.model.age == 10, self.model.height == 15)).one()
         assert actual_user is expected_user
 
     def test_basic_or(self):
@@ -188,7 +189,8 @@ class JsonQueryTestCase(unittest.TestCase):
             ]
         })
         actual_users = jsonquery(self.session, self.model, json).all()
-        expected_users = self.query.filter(or_(self.model.age == 10, self.model.height == 15)).all()
+        expected_users = self.query.filter(
+            or_(self.model.age == 10, self.model.height == 15)).all()
         assert 3 == len(actual_users) == len(expected_users)
         assert set(actual_users) == set(expected_users)
 
@@ -356,12 +358,12 @@ class StringColumnTestCase(unittest.TestCase):
         Test that like, ilike for a basic sqlite String column both ignore case
 
         Passing this test indicates that like, ilike are handled identically,
-            and is the reason the various wildcard tests below do not have ilike
-            versions.
+            and is the reason the various wildcard tests below do not have
+            ilike versions.
 
-        Should this test start failing, it may be because case sensitivity becomes the
-            default for Column(String), in which case it would be relevant to have
-            new like/ilike tests again.
+        Should this test start failing, it may be because case sensitivity
+            becomes the default for Column(String), in which case it would be
+            relevant to have new like/ilike tests again.
         '''
         actual, expected = self.like_value('Hello')
         assert 2 == len(actual) == len(expected)

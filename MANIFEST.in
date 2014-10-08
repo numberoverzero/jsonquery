@@ -1,0 +1,3 @@
+include CHANGES.rst
+include README.rst
+recursive-exclude tests *

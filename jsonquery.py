@@ -20,6 +20,7 @@ DEFAULT_QUERY_CONSTRAINTS = {
 
 OPERATORS = {}
 
+
 def register_operator(opstring, func):
     '''
     Registers a function so that the operator can be used in queries.
@@ -28,8 +29,10 @@ def register_operator(opstring, func):
         The string used to reference this function in json queries
 
     func:
-        Function that takes a column object (sqlalchemy.orm.attributes.InstrumentedAttribute)
-        and a value and returns a criterion to be passed to session.query(model).filter()
+        Function that takes a column object
+            (sqlalchemy.orm.attributes.InstrumentedAttribute)
+        and a value and returns a criterion to be passed to
+            session.query(model).filter()
 
         Example: Adding the >= operator
             def gt(column, value):
@@ -46,7 +49,8 @@ def register_operator(opstring, func):
                 return func(value)
             register_operator('in_', in_)
 
-        See http://docs.sqlalchemy.org/en/rel_0_8/orm/query.html#sqlalchemy.orm.query.Query.filter.
+        See http://docs.sqlalchemy.org/en/rel_0_8/orm/query.html\
+            #sqlalchemy.orm.query.Query.filter.
     '''
     OPERATORS[opstring] = func
 
@@ -66,7 +70,10 @@ attr_funcs = [
     'ilike',
     'in_'
 ]
-def attr_op(op): return lambda col, value: getattr(col, op)(value)
+
+
+def attr_op(op):
+    return lambda col, value: getattr(col, op)(value)
 for opstring in attr_funcs:
     register_operator(opstring, attr_op(opstring))
 
@@ -108,8 +115,9 @@ def jsonquery(session, model, json, **kwargs):
                 value: 'pat%'
             }
 
-        Logical operators 'and' and 'or' take an array, while 'not' takes a single value.
-        It is invalid to have a logical operator as the value of a subquery.
+        Logical operators 'and' and 'or' take an array, while 'not'
+        takes a single value.  It is invalid to have a logical operator
+        as the value of a subquery.
 
         Numeric operators are:
             <, <=, ==, !=, >=, >
@@ -117,23 +125,28 @@ def jsonquery(session, model, json, **kwargs):
             like    case-sensitive match
             ilike   case-insensitive match
 
-            String wildcard character is % (so "pat%" matches "patrick" and "patty")
-            with default escape character '/'
+            String wildcard character is "%", so "pat%" matches "patrick"
+            and "patty".  Default escape character is '/'
 
     max_breadth (Optional):
-        Maximum number of elements in a single and/or operator. Default is None.
+        Maximum number of elements in a single and/or operator.
+        Default is None.
 
     max_depth (Optional):
-        Maximum nested depth of a constraint.  Default is None.
+        Maximum nested depth of a constraint.
+        Default is None.
 
     max_elements (Optional):
-        Maximum number of constraints and logical operators allowed in a query.  Default is 64.
+        Maximum number of constraints and logical operators allowed in a query.
+        Default is 64.
+
     '''
     constraints = dict(DEFAULT_QUERY_CONSTRAINTS)
     constraints.update(kwargs)
     count = depth = 0
     criterion, total_elements = _build(json, count, depth, model, constraints)
     return session.query(model).filter(criterion)
+
 
 def _build(node, count, depth, model, constraints):
     count += 1
@@ -152,6 +165,7 @@ def _build(node, count, depth, model, constraints):
     else:
         return _build_column(node, model), count
 
+
 def _validate_query_constraints(value, count, depth, constraints):
         '''Raises if any query constraints are violated'''
         max_breadth = constraints['max_breadth']
@@ -166,13 +180,16 @@ def _validate_query_constraints(value, count, depth, constraints):
             element_breadth = len(value)
 
         if max_breadth and element_breadth > max_breadth:
-                raise ValueError('Breadth limit ({}) exceeded'.format(max_breadth))
+                raise ValueError(
+                    'Breadth limit ({}) exceeded'.format(max_breadth))
 
         count += element_breadth
         if max_elements and count > max_elements:
-            raise ValueError('Filter elements limit ({}) exceeded'.format(max_elements))
+            raise ValueError(
+                'Filter elements limit ({}) exceeded'.format(max_elements))
 
-def _build_sql_sequence( node, count, depth, model, constraints, func):
+
+def _build_sql_sequence(node, count, depth, model, constraints, func):
     '''
     func is either sqlalchemy.and_ or sqlalchemy.or_
     Build each subquery in node['value'], then combine with func(*subqueries)
@@ -183,13 +200,15 @@ def _build_sql_sequence( node, count, depth, model, constraints, func):
         subqueries.append(subquery)
     return func(*subqueries), count
 
-def _build_sql_unary( node, count, depth, model, constraints, func):
+
+def _build_sql_unary(node, count, depth, model, constraints, func):
     '''
     func is sqlalchemy.not_ (may support others)
     '''
     value = node['value']
     subquery, count = _build(value, count, depth, model, constraints)
     return func(subquery), count
+
 
 def _build_column(node, model):
     # string => sqlalchemy.orm.attributes.InstrumentedAttribute
