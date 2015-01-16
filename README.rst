@@ -166,5 +166,7 @@ Contributors
 ========================================================
 
 * duesenfranz_ - Python 3 compatibility
+* svisser_ - Python 3 compatibility
 
 .. _duesenfranz: https://github.com/duesenfranz
+.. _svisser: https://github.com/svisser
