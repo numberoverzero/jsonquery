@@ -43,7 +43,7 @@ if __name__ == "__main__":
         ],
         author='Joe Cross',
         author_email='joe.mcross@gmail.com',
-        url='http://jsonquery.readthedocs.org/',
+        url='https://github.com/numberoverzero/jsonquery',
         license='MIT',
         keywords='json sqlalchemy sql orm',
         platforms='any',
