@@ -22,7 +22,7 @@ TEST_REQUIREMENTS = [
 if __name__ == "__main__":
     setup(
         name='jsonquery',
-        version='1.0.1',
+        version='1.0.2',
         description="Basic json -> sqlalchemy query builder",
         long_description=README + '\n\n' + CHANGES,
         classifiers=[
